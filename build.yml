@@ -1,0 +1,29 @@
+name: Build Singularity Image
+
+on:
+  push:
+    branches: [ "main" ]  # 当你向 main 分支推送代码时触发构建
+  workflow_dispatch:      # 允许手动点击按钮触发构建
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Singularity
+        uses: eidos-lab/setup-singularity@main
+        with:
+          singularity-version: 3.8.3
+
+      - name: Build SIF Image
+        run: |
+          # 使用 sudo 构建镜像，GitHub Runner 允许 sudo
+          sudo singularity build alphafold3.sif alphafold3.def
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alphafold3-image
+          path: alphafold3.sif
