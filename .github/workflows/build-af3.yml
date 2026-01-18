@@ -36,17 +36,21 @@ jobs:
 
       - name: Build SIF Image
         run: |
-          # 创建临时目录
-          mkdir -p $GITHUB_WORKSPACE/tmp
-          export APPTAINER_TMPDIR=$GITHUB_WORKSPACE/tmp
-          export APPTAINER_CACHEDIR=$GITHUB_WORKSPACE/tmp
+          # 1. 在空间巨大的 /mnt 分区创建工作目录
+          sudo mkdir -p /mnt/tmp
+          sudo chmod 777 /mnt/tmp
           
-          # 使用 --disable-cache 并在构建前再次确认空间
-          df -h
-          sudo -E apptainer build --disable-cache --force alphafold3.sif alphafold3.def
+          # 2. 强制指定所有 Apptainer 路径到 /mnt
+          export APPTAINER_TMPDIR=/mnt/tmp
+          export APPTAINER_CACHEDIR=/mnt/tmp
           
-          # 构建完成后清理临时目录，确保有空间进行最后的 SIF 压缩转换
-          rm -rf $GITHUB_WORKSPACE/tmp/*
+          # 3. 运行构建
+          # 注意：我们将输出路径也指向 /mnt 以确保写入空间
+          sudo -E apptainer build --disable-cache --force /mnt/alphafold3.sif alphafold3.def
+          
+          # 4. 构建完成后，将成品移回当前目录以便上传 Release
+          sudo mv /mnt/alphafold3.sif .
+          sudo rm -rf /mnt/tmp/*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
