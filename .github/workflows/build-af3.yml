@@ -37,12 +37,15 @@ jobs:
 
       - name: Build SIF Image
         run: |
-          # 2. 核心优化：将临时目录指向当前工作目录（该分区空间经过上面的清理已变大）
-          # 同时使用 --no-cache 减少重复占用
-          mkdir -p ./tmp
-          export APPTAINER_TMPDIR=$PWD/tmp
-          export APPTAINER_CACHEDIR=$PWD/tmp
-          sudo -E apptainer build --no-cache alphafold3.sif Singularity.def
+          # 创建临时目录并设置为绝对路径
+          mkdir -p $GITHUB_WORKSPACE/tmp
+          export APPTAINER_TMPDIR=$GITHUB_WORKSPACE/tmp
+          export APPTAINER_CACHEDIR=$GITHUB_WORKSPACE/tmp
+          
+          # 关键修改：
+          # 1. 使用 --disable-cache (根据你的帮助文档输出)
+          # 2. 使用 sudo -E 确保环境变量 (TMPDIR) 被带入 sudo 环境
+          sudo -E apptainer build --disable-cache --force alphafold3.sif alphafold3.def
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
