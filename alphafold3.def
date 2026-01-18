@@ -1,0 +1,86 @@
+Bootstrap: docker
+# [关键修改] 使用 Ubuntu 24.04 (自带 Python 3.12) 且保持 devel 版本 (含编译工具)
+From: nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04
+
+%labels
+    Author bobo
+    Version alphafold3-git-py312-final
+    Source https://github.com/google-deepmind/alphafold3.git
+
+%environment
+    export PATH=/hmmer/bin:/alphafold3_venv/bin:/usr/local/cuda/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+    # JAX 显存优化参数
+    export XLA_FLAGS=--xla_gpu_enable_triton_gemm=false
+    export XLA_PYTHON_CLIENT_PREALLOCATE=true
+    export XLA_CLIENT_MEM_FRACTION=0.95
+    export JUPYTER_ALLOW_INSECURE_WRITES=true
+
+%post
+    set -e
+    
+    echo "===> 1. System Update (Ubuntu 24.04)"
+    apt-get update
+    # Ubuntu 24.04 默认就是 Python 3.12，无需额外指定版本号
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        python3-pip python3-venv python3-dev \
+        git wget curl ca-certificates \
+        build-essential \
+        zlib1g-dev zstd \
+        libssl-dev \
+        libffi-dev \
+        pkg-config \
+        kalign \
+        nano vim procps
+
+    echo "===> 2. Setting up Python 3.12 Environment"
+    # 创建虚拟环境
+    python3 -m venv /alphafold3_venv
+    . /alphafold3_venv/bin/activate
+    pip install --upgrade pip setuptools wheel
+
+    echo "===> 3. Installing HMMER 3.4"
+    mkdir -p /hmmer_build /hmmer
+    cd /hmmer_build
+    wget http://eddylab.org/software/hmmer/hmmer-3.4.tar.gz
+    tar xzf hmmer-3.4.tar.gz
+    cd hmmer-3.4
+    ./configure --prefix=/hmmer
+    make -j$(nproc)
+    make install
+    cd /
+    rm -rf /hmmer_build
+
+    echo "===> 4. Cloning AlphaFold 3 from GitHub"
+    mkdir -p /app
+    cd /app
+    git clone https://github.com/google-deepmind/alphafold3.git alphafold
+    cd alphafold
+
+    echo "===> 5. Installing Dependencies"
+    # 安装 CUDA 12 版本的 JAX
+    pip install --upgrade "jax[cuda12]" \
+        -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+    # 处理依赖
+    if [ -f "requirements.txt" ]; then
+        pip install --no-cache-dir -r requirements.txt
+    fi
+    
+    # [关键] 现在 Python 是 3.12，这一步将顺利通过
+    pip install --no-cache-dir --no-deps .
+
+    echo "===> 6. Installing JupyterLab"
+    pip install --no-cache-dir jupyterlab matplotlib pandas ipykernel
+
+    apt-get clean
+
+%runscript
+    exec python3 /app/alphafold/run_alphafold.py "$@"
+
+%test
+    echo "===> Verifying Installation"
+    . /alphafold3_venv/bin/activate
+    python3 --version
+    python3 -c "import alphafold3; print('AlphaFold3 installed successfully')"
+    python3 -c "import jax; print(f'JAX Version: {jax.__version__}')"
