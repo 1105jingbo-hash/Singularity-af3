@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 使用更稳定的 22.04 环境
+    runs-on: ubuntu-latest
     permissions:
       contents: write 
 
@@ -13,29 +13,43 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 直接手动安装 Singularity，避开失效的 Action
-      - name: Install Singularity dependencies
+      # 1. 极其激进的磁盘清理：删除所有预装的不相关环境
+      - name: Free More Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf /usr/lib/jvm
+          sudo rm -rf /usr/local/graalvm
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/lib/node_modules
+          # 清理 Docker 镜像
+          sudo docker image prune -a -f
+          df -h # 显示清理后的空间，确保可用空间在 25GB 以上
+
+      - name: Install Apptainer
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libseccomp-dev pkg-config squashfs-tools cryptsetup
-          
-          # 下载并安装 Apptainer (Singularity 的现代替代品，完全兼容 .def 文件)
           wget https://github.com/apptainer/apptainer/releases/download/v1.3.0/apptainer_1.3.0_amd64.deb
           sudo apt-get install -y ./apptainer_1.3.0_amd64.deb
 
       - name: Build SIF Image
         run: |
-          # 使用 apptainer 编译，它完美支持 Singularity 语法
-          sudo apptainer build alphafold3.sif alphafold3.def
+          # 2. 核心优化：将临时目录指向当前工作目录（该分区空间经过上面的清理已变大）
+          # 同时使用 --no-cache 减少重复占用
+          mkdir -p ./tmp
+          export APPTAINER_TMPDIR=$PWD/tmp
+          export APPTAINER_CACHEDIR=$PWD/tmp
+          sudo -E apptainer build --no-cache alphafold3.sif Singularity.def
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
+        if: success()
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: AlphaFold3 SIF Release v1.0.${{ github.run_number }}
-          draft: false
-          prerelease: false
           files: alphafold3.sif
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
