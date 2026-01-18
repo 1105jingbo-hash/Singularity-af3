@@ -13,20 +13,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. 极其激进的磁盘清理：删除所有预装的不相关环境
-      - name: Free More Disk Space
+      # 极其彻底的磁盘清理，预计可腾出 30GB+ 空间
+      - name: Maximize Build Space
         run: |
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf /usr/lib/jvm
-          sudo rm -rf /usr/local/graalvm
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/local/lib/node_modules
-          # 清理 Docker 镜像
+          sudo rm -rf /var/lib/apt/lists/*
           sudo docker image prune -a -f
-          df -h # 显示清理后的空间，确保可用空间在 25GB 以上
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          df -h
 
       - name: Install Apptainer
         run: |
@@ -37,15 +36,17 @@ jobs:
 
       - name: Build SIF Image
         run: |
-          # 创建临时目录并设置为绝对路径
+          # 创建临时目录
           mkdir -p $GITHUB_WORKSPACE/tmp
           export APPTAINER_TMPDIR=$GITHUB_WORKSPACE/tmp
           export APPTAINER_CACHEDIR=$GITHUB_WORKSPACE/tmp
           
-          # 关键修改：
-          # 1. 使用 --disable-cache (根据你的帮助文档输出)
-          # 2. 使用 sudo -E 确保环境变量 (TMPDIR) 被带入 sudo 环境
+          # 使用 --disable-cache 并在构建前再次确认空间
+          df -h
           sudo -E apptainer build --disable-cache --force alphafold3.sif alphafold3.def
+          
+          # 构建完成后清理临时目录，确保有空间进行最后的 SIF 压缩转换
+          rm -rf $GITHUB_WORKSPACE/tmp/*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
