@@ -52,12 +52,18 @@ jobs:
           sudo mv /mnt/alphafold3.sif .
           sudo rm -rf /mnt/tmp/*
 
+      - name: Split and Prepare Release
+        run: |
+          # 1. 压缩并分卷，每个包 1.5GB (1500M)
+          # 这会生成 alphafold3.sif.tar.gz.00, .01, .02 ...
+          sudo tar -cvzf - /mnt/alphafold3.sif | split -b 1500M - d - alphafold3.sif.tar.gz.
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         if: success()
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: AlphaFold3 SIF Release v1.0.${{ github.run_number }}
-          files: alphafold3.sif
+          name: AlphaFold3 SIF (Split) v1.0.${{ github.run_number }}
+          files: alphafold3.sif.tar.gz.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
