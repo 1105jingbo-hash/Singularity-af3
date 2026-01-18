@@ -54,15 +54,16 @@ jobs:
 
       - name: Split and Prepare Release
         run: |
-          # 1. 进入镜像所在的目录，避免 tar 的路径警告
-          cd /mnt
+          # 1. 明确检查镜像是否存在
+          ls -lh /mnt/alphafold3.sif
           
-          # 2. 使用 sudo 确保有权限读取并压缩
-          # 修正 split 语法：cat [文件] | split -b [大小] - [前缀]
-          sudo tar -cvz alphafold3.sif | split -b 1500M - $GITHUB_WORKSPACE/alphafold3.sif.tar.gz.
+          # 2. 直接使用绝对路径进行压缩和分卷
+          # -C /mnt 告诉 tar 切换到该目录执行，这样就不会有路径警告
+          # sudo 确保可以读取 root 拥有的 sif 文件
+          sudo tar -cvz -C /mnt alphafold3.sif | split -b 1500M - alphafold3.sif.tar.gz.
           
-          # 3. 检查生成的文件
-          ls -lh $GITHUB_WORKSPACE/alphafold3.sif.tar.gz.*
+          # 3. 确认生成的文件（正常情况下应该有多个几百MB或1.5GB的文件）
+          ls -lh alphafold3.sif.tar.gz.*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
