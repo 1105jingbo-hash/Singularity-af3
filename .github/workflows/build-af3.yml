@@ -13,17 +13,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 极其彻底的磁盘清理，预计可腾出 30GB+ 空间
       - name: Maximize Build Space
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf /usr/lib/jvm
-          sudo rm -rf /var/lib/apt/lists/*
+          # 极致清理，腾出 30GB+ 空间
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc "/usr/local/share/boost" /usr/lib/jvm
           sudo docker image prune -a -f
-          sudo apt-get autoremove -y
           sudo apt-get clean
           df -h
 
@@ -36,41 +30,33 @@ jobs:
 
       - name: Build SIF Image
         run: |
-          # 1. 在空间巨大的 /mnt 分区创建工作目录
+          # 确保在 /mnt (66GB 剩余) 运行
           sudo mkdir -p /mnt/tmp
           sudo chmod 777 /mnt/tmp
-          
-          # 2. 强制指定所有 Apptainer 路径到 /mnt
           export APPTAINER_TMPDIR=/mnt/tmp
           export APPTAINER_CACHEDIR=/mnt/tmp
-          
-          # 3. 运行构建
-          # 注意：我们将输出路径也指向 /mnt 以确保写入空间
+          # 显式指定输出到 /mnt/alphafold3.sif
           sudo -E apptainer build --disable-cache --force /mnt/alphafold3.sif alphafold3.def
-          
-          # 4. 构建完成后，将成品移回当前目录以便上传 Release
-          sudo mv /mnt/alphafold3.sif .
-          sudo rm -rf /mnt/tmp/*
 
       - name: Split and Prepare Release
         run: |
-          # 1. 明确检查镜像是否存在
+          # 1. 验证文件物理存在
+          if [ ! -f /mnt/alphafold3.sif ]; then echo "错误: 镜像文件未找到!"; exit 1; fi
           ls -lh /mnt/alphafold3.sif
           
-          # 2. 直接使用绝对路径进行压缩和分卷
-          # -C /mnt 告诉 tar 切换到该目录执行，这样就不会有路径警告
-          # sudo 确保可以读取 root 拥有的 sif 文件
-          sudo tar -cvz -C /mnt alphafold3.sif | split -b 1500M - alphafold3.sif.tar.gz.
+          # 2. 压缩并分卷 (每个包 1.8GB，不超过 GitHub 2GB 限制)
+          # 使用 sudo 确保读取权限，-C 确保相对路径压缩
+          sudo tar -cvz -C /mnt alphafold3.sif | split -b 1800M - alphafold3.sif.tar.gz.
           
-          # 3. 确认生成的文件（正常情况下应该有多个几百MB或1.5GB的文件）
+          # 3. 检查生成结果 (如果看到文件大小只有几十字节，说明失败)
           ls -lh alphafold3.sif.tar.gz.*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: AlphaFold3 SIF (Split) v1.0.${{ github.run_number }}
+          tag_name: v1.1.${{ github.run_number }}
+          name: AlphaFold3 SIF Release v1.1.${{ github.run_number }}
           files: alphafold3.sif.tar.gz.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
